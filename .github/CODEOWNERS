@@ -1,0 +1,3 @@
+# This repo is PUBLIC and is the entry point every new Fido machine runs.
+# Every change needs devops review.
+* @FidoMoney/devops

@@ -1,0 +1,80 @@
+name: ci
+
+# Both bootstrap scripts are tiny and have no Fido-internal dependencies, so
+# linting is the whole test suite:
+#   - lint-sh:  shellcheck + bash -n on bootstrap.sh
+#   - lint-ps1: PSScriptAnalyzer (Error severity) + an AST parse of
+#     bootstrap.ps1, plus an ASCII-only guard. bootstrap.ps1 has to run under
+#     Windows PowerShell 5.1, where a non-ASCII byte read under the wrong
+#     codepage corrupts the script; keeping the file pure ASCII sidesteps that
+#     entire class of bug, so CI enforces it.
+
+on:
+  workflow_dispatch:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  lint-sh:
+    name: Lint bootstrap.sh
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Syntax check
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash -n bootstrap.sh
+          echo "Syntax: OK"
+
+      - name: ShellCheck
+        shell: bash
+        run: |
+          set -euo pipefail
+          shellcheck --version
+          shellcheck -S warning bootstrap.sh
+          echo "ShellCheck: clean"
+
+  lint-ps1:
+    name: Lint bootstrap.ps1
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: ASCII-only guard
+        shell: bash
+        run: |
+          set -euo pipefail
+          if LC_ALL=C grep -nP '[^\x00-\x7F]' bootstrap.ps1; then
+            echo "::error file=bootstrap.ps1::non-ASCII bytes found (see lines above). Windows PowerShell 5.1 reads this file under the console codepage, so keep it pure ASCII: use -> instead of arrows and - instead of dashes."
+            exit 1
+          fi
+          echo "ASCII-only: OK"
+
+      - name: AST parse check
+        shell: pwsh
+        run: |
+          $err = $null
+          $null = [System.Management.Automation.Language.Parser]::ParseFile(
+            (Resolve-Path ./bootstrap.ps1).Path, [ref]$null, [ref]$err)
+          if ($err) {
+            $err | ForEach-Object { Write-Host ("{0}:{1} {2}" -f $_.Extent.StartLineNumber, $_.Extent.StartColumnNumber, $_.Message) }
+            Write-Error "Parse errors"; exit 1
+          }
+          Write-Host "Parse: OK"
+
+      - name: PSScriptAnalyzer
+        shell: pwsh
+        run: |
+          Install-Module -Name PSScriptAnalyzer -Force -Scope CurrentUser -ErrorAction Stop
+          $results = Invoke-ScriptAnalyzer -Path ./bootstrap.ps1 -Severity Error
+          if ($results) {
+            $results | Format-Table -AutoSize | Out-String | Write-Host
+            Write-Error "PSScriptAnalyzer found errors"; exit 1
+          }
+          Write-Host "PSScriptAnalyzer: clean"
