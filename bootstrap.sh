@@ -85,7 +85,13 @@ ensure_gh() {
     esac
 
     info "Fetching a temporary GitHub CLI (nothing is installed system-wide)..."
-    if ! tag="$(curl -fsSL "$GH_LATEST_API" | python3 -c 'import json,sys; print(json.load(sys.stdin)["tag_name"])' 2>/dev/null)"; then
+    # Parse tag_name with awk, never python3: on a brand-new Mac /usr/bin/python3
+    # is only the Xcode Command Line Tools stub — invoking it pops the CLT install
+    # dialog and fails, and this script's whole job is to work on exactly that
+    # machine. awk ships with the OS. (No early `exit` in the awk program: closing
+    # the pipe while curl is still writing would trip pipefail with exit 23.)
+    if ! tag="$(curl -fsSL "$GH_LATEST_API" \
+        | awk -F'"' '/"tag_name"[[:space:]]*:/ && !t { t = $4 } END { if (t) print t }')"; then
         fail "Couldn't ask github.com for the latest GitHub CLI release."
         fail "Install it yourself and re-run this command:  ${BOLD}brew install gh${NC}"
         return 1
