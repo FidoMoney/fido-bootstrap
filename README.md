@@ -3,9 +3,10 @@
 The public entry point for setting up a Fido engineering machine.
 
 This repo holds two small scripts — `bootstrap.sh` (macOS) and `bootstrap.ps1`
-(Windows) — that do three things and nothing else:
+(Windows) — that do these things and nothing else:
 
-1. Make sure the **GitHub CLI (`gh`)** is available, installing it if it isn't.
+1. Make sure Apple's **Command Line Tools** are installed (one popup on a new Mac),
+   then that the **GitHub CLI (`gh`)** is available, installing it if it isn't.
 2. Log you in to GitHub in your browser, if you aren't already.
 3. Fetch the real installer from the private **`FidoMoney/fido-installer`**
    repo and run it, passing along any arguments you gave.
@@ -98,7 +99,8 @@ previous login is the usual cause.
 
 **`gh` install fails on macOS** — the bootstrap downloads the official release
 from `cli/cli`. If you're behind a proxy that blocks it, install `gh` yourself
-(`brew install gh`) and re-run; the bootstrap will use the one on your PATH.
+with the macOS installer from <https://cli.github.com> and re-run; the bootstrap
+will use the one on your PATH.
 
 **`winget` not found on Windows** — install **App Installer** from the
 Microsoft Store, close and reopen PowerShell, then re-run.
