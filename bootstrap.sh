@@ -140,7 +140,7 @@ ensure_gh_auth() {
         return 1
     fi
     info "Signing you in to GitHub — a browser window will open."
-    info "Pick ${BOLD}HTTPS${NC} if you're asked how to authenticate."
+    info "If gh asks 'Authenticate Git with your GitHub credentials?', answer ${BOLD}Y${NC}."
     echo ""
     if ! "$gh" auth login -h github.com -p https -w; then
         fail "GitHub sign-in didn't complete — re-run this command to try again."
@@ -188,24 +188,40 @@ fetch_installer() {
 # gh auth login runs `git` before it prompts; on a new Mac that is Apple's
 # stub, which pops the Command Line Tools dialog mid-login. Install them first.
 ensure_clt() {
-    xcode-select -p &> /dev/null && return 0
-    if ! (exec </dev/tty) 2>/dev/null; then
-        fail "Apple's Command Line Tools are missing and there's no terminal to install them."
-        fail "Run: xcode-select --install   then re-run this command."
-        return 1
-    fi
-    info "Installing Apple's Command Line Tools — click ${BOLD}Install${NC} in the popup (a few minutes)."
-    xcode-select --install 2>/dev/null || true
-    local waited=0
-    until xcode-select -p &> /dev/null; do
-        if [ "$waited" -ge 1800 ]; then
-            fail "Command Line Tools still not installed after 30 minutes."
+    if ! xcode-select -p &> /dev/null; then
+        if ! (exec </dev/tty) 2>/dev/null; then
+            fail "Apple's Command Line Tools are missing and there's no terminal to install them."
             fail "Run: xcode-select --install   then re-run this command."
             return 1
         fi
-        sleep 10; waited=$((waited + 10))
-    done
-    success "Command Line Tools installed"
+        # Over SSH with nobody at the Mac's screen, the install popup can never appear.
+        if [ -n "${SSH_CONNECTION:-}" ] && [ "$(stat -f %Su /dev/console 2>/dev/null)" != "$(id -un)" ]; then
+            fail "Apple's Command Line Tools are missing and this SSH session has no screen for the install popup."
+            fail "Install them headless:  softwareupdate --list   (find the \"Command Line Tools\" label)"
+            fail "  then: sudo softwareupdate -i \"<Command Line Tools label>\"   and re-run this command."
+            return 1
+        fi
+        info "Installing Apple's Command Line Tools — click ${BOLD}Install${NC} in the popup (a few minutes)."
+        xcode-select --install 2>/dev/null || true
+        local waited=0
+        until xcode-select -p &> /dev/null; do
+            if [ "$waited" -ge 1800 ]; then
+                fail "Command Line Tools still not installed after 30 minutes."
+                fail "Run: xcode-select --install   then re-run this command."
+                return 1
+            fi
+            if [ "$waited" -gt 0 ] && [ $((waited % 60)) -eq 0 ]; then
+                info "Still waiting for the Command Line Tools install — if you closed the popup, run: xcode-select --install   (Ctrl-C to stop)"
+            fi
+            sleep 10; waited=$((waited + 10))
+        done
+        success "Command Line Tools installed"
+    fi
+    if ! /usr/bin/git --version &> /dev/null; then
+        fail "Command Line Tools are installed but git still doesn't run."
+        fail "Fix: sudo xcode-select --reset   (or reinstall the Command Line Tools), then re-run this command."
+        return 1
+    fi
 }
 
 # ── Flow ────────────────────────────────────────────────────────────
