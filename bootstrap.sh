@@ -81,7 +81,7 @@ ensure_gh() {
         # on Intel, which is the same thing by another name.
         arm64 | aarch64) arch="arm64" ;;
         x86_64 | amd64)  arch="amd64" ;;
-        *) fail "Unsupported CPU architecture '${arch}' — install gh yourself: brew install gh"; return 1 ;;
+        *) fail "Unsupported CPU architecture '${arch}' — download the macOS installer from https://cli.github.com and re-run"; return 1 ;;
     esac
 
     info "Fetching a temporary GitHub CLI (nothing is installed system-wide)..."
@@ -93,7 +93,7 @@ ensure_gh() {
     if ! tag="$(curl -fsSL "$GH_LATEST_API" \
         | awk -F'"' '/"tag_name"[[:space:]]*:/ && !t { t = $4 } END { if (t) print t }')"; then
         fail "Couldn't ask github.com for the latest GitHub CLI release."
-        fail "Install it yourself and re-run this command:  ${BOLD}brew install gh${NC}"
+        fail "Install gh yourself: download the macOS installer from https://cli.github.com and re-run"
         return 1
     fi
     version="${tag#v}"
@@ -102,7 +102,7 @@ ensure_gh() {
     url="https://github.com/cli/cli/releases/download/${tag}/gh_${version}_macOS_${arch}.zip"
     if ! curl -fsSL "$url" -o "${BOOT_TMP}/gh.zip"; then
         fail "Couldn't download ${url}"
-        fail "Install gh yourself and re-run this command:  ${BOLD}brew install gh${NC}"
+        fail "Install gh yourself: download the macOS installer from https://cli.github.com and re-run"
         return 1
     fi
     if ! unzip -q "${BOOT_TMP}/gh.zip" -d "${BOOT_TMP}/gh"; then
@@ -116,7 +116,7 @@ ensure_gh() {
         bin="$(find "${BOOT_TMP}/gh" -type f -name gh -perm -u+x 2>/dev/null | head -1)"
     fi
     if [ -z "$bin" ] || ! "$bin" --version >/dev/null 2>&1; then
-        fail "The downloaded GitHub CLI doesn't run — install it yourself: ${BOLD}brew install gh${NC}"
+        fail "The downloaded GitHub CLI doesn't run — install it yourself: download the macOS installer from https://cli.github.com and re-run"
         return 1
     fi
     success "GitHub CLI ${version} ready (temporary)"
@@ -185,8 +185,35 @@ fetch_installer() {
     success "Downloaded the Fido installer"
 }
 
+# gh auth login runs `git` before it prompts; on a new Mac that is Apple's
+# stub, which pops the Command Line Tools dialog mid-login. Install them first.
+ensure_clt() {
+    xcode-select -p &> /dev/null && return 0
+    if ! (exec </dev/tty) 2>/dev/null; then
+        fail "Apple's Command Line Tools are missing and there's no terminal to install them."
+        fail "Run: xcode-select --install   then re-run this command."
+        return 1
+    fi
+    info "Installing Apple's Command Line Tools — click ${BOLD}Install${NC} in the popup (a few minutes)."
+    xcode-select --install 2>/dev/null || true
+    local waited=0
+    until xcode-select -p &> /dev/null; do
+        if [ "$waited" -ge 1800 ]; then
+            fail "Command Line Tools still not installed after 30 minutes."
+            fail "Run: xcode-select --install   then re-run this command."
+            return 1
+        fi
+        sleep 10; waited=$((waited + 10))
+    done
+    success "Command Line Tools installed"
+}
+
 # ── Flow ────────────────────────────────────────────────────────────
 print_banner
+
+if ! ensure_clt; then
+    exit 1
+fi
 
 if ! GH_BIN="$(ensure_gh)"; then
     exit 1
